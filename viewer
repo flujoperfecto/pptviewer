@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Visor de Sitios Web</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100%; height: 100vh; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden;
+      background: linear-gradient(135deg, #4a90d9, #2c6cb0);
+      padding: 10px;
+    }
+    #config {
+      position: absolute; top: 12px; left: 12px; right: 12px; z-index: 100;
+      background: rgba(255, 255, 255, 0.97); border-radius: 12px; padding: 10px 14px;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12); transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    #config.hidden { opacity: 0; transform: translateY(-20px); pointer-events: none; }
+    #config .icon { font-size: 20px; flex-shrink: 0; }
+    #urlInput {
+      flex: 1; padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 8px;
+      font-size: 14px; outline: none; transition: border-color 0.2s; min-width: 0;
+    }
+    #urlInput:focus { border-color: #4a90d9; }
+    #urlInput::placeholder { color: #aaa; }
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px;
+      font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.1s; white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary { background: #4a90d9; color: white; }
+    .btn-primary:hover { background: #3a7bc8; }
+    .btn-window { background: #27ae60; color: white; padding: 8px 12px; }
+    .btn-window:hover { background: #219a52; }
+    .btn-hide { background: #e8e8e8; color: #555; padding: 8px 10px; }
+    .btn-hide:hover { background: #ddd; }
+    .btn-icon { background: #e8e8e8; color: #555; padding: 8px 11px; font-size: 15px; line-height: 1; }
+    .btn-icon:hover { background: #ddd; }
+    #toggleBtn {
+      position: absolute; top: 8px; right: 8px; z-index: 101; width: 36px; height: 36px;
+      border-radius: 50%; border: none; background: rgba(255,255,255,0.9);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15); cursor: pointer; font-size: 16px;
+      display: none; align-items: center; justify-content: center; transition: background 0.2s;
+    }
+    #toggleBtn:hover { background: rgba(255,255,255,1); }
+    #toggleBtn.visible { display: flex; }
+    #envBadge {
+      position: absolute; top: 58px; right: 12px; z-index: 100; padding: 4px 10px;
+      border-radius: 12px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; transition: opacity 0.3s ease;
+    }
+    #envBadge.online { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+    #envBadge.desktop { background: #d4edda; color: #155724; border: 1px solid #28a745; }
+    #envBadge.hidden { opacity: 0; pointer-events: none; }
+    #appWrapper {
+      position: relative; width: 100%; height: 100%; background: #f0f2f5;
+      border-radius: 4px; overflow: hidden;
+    }
+    #webFrame { width: 100%; height: 100%; border: none; background: white; }
+    #overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex;
+      flex-direction: column; align-items: center; justify-content: center;
+      background: #f0f2f5; z-index: 50; text-align: center; padding: 2em;
+    }
+    #overlay.hidden { display: none; }
+    #overlay .emoji { font-size: 48px; margin-bottom: 16px; }
+    #overlay h2 { color: #333; font-size: 20px; margin-bottom: 8px; }
+    #overlay p { color: #777; font-size: 14px; max-width: 460px; line-height: 1.5; }
+    #overlay .overlay-btn {
+      display: inline-block; margin-top: 16px; padding: 10px 24px; background: #27ae60;
+      color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background 0.2s;
+    }
+    #overlay .overlay-btn:hover { background: #219a52; }
+    #overlay .overlay-btn.secondary { background: #4a90d9; margin-left: 8px; }
+    #overlay .overlay-btn.secondary:hover { background: #3a7bc8; }
+    #overlay .tip {
+      margin-top: 20px; padding: 12px 20px; background: #fff3cd; border: 1px solid #ffc107;
+      border-radius: 8px; color: #856404; font-size: 12px; max-width: 460px;
+    }
+    #loading {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 60; display: none; text-align: center;
+    }
+    #loading.active { display: block; }
+    .spinner {
+      width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top-color: #4a90d9;
+      border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+    }
+    #loading .loading-text { font-size: 12px; color: #999; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+<div id="appWrapper">
+
+  <div id="config">
+    <span class="icon">🌐</span>
+    <input id="urlInput" type="text" placeholder="Escribe la URL del sitio (ej. https://example.com)" />
+    <button class="btn btn-primary" onclick="loadUrl()">Cargar</button>
+    <button class="btn btn-icon" onclick="reloadFrame()" title="Recargar página">↻</button>
+    <button class="btn btn-icon" onclick="toggleFullscreen()" title="Pantalla completa">⛶</button>
+    <button id="btnOpenWindow" class="btn btn-window" onclick="openInDialog()" title="Abrir en ventana aparte">Ventana</button>
+    <button class="btn btn-hide" onclick="toggleControls()" title="Ocultar controles">✕</button>
+  </div>
+
+  <button id="toggleBtn" onclick="toggleControls()" title="Mostrar controles">⚙</button>
+
+  <div id="envBadge"></div>
+
+  <div id="overlay">
+    <div class="emoji">🌐</div>
+    <h2>Visor de Sitios Web</h2>
+    <p>Escribe una URL arriba y pulsa <strong>Cargar</strong> para mostrarla dentro de esta diapositiva.</p>
+    <p style="margin-top: 8px; font-size: 13px; color: #999;">💡 Tip: pega un enlace de YouTube o Vimeo para incrustar un video.</p>
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">Cargando sitio web...</div>
+  </div>
+
+  <iframe id="webFrame" src=""
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write; accelerometer; gyroscope; web-share"
+          allowfullscreen
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation allow-presentation allow-downloads allow-modals"></iframe>
+
+</div>
+
+  <script>
+    const urlInput = document.getElementById('urlInput');
+    const webFrame = document.getElementById('webFrame');
+    const overlay = document.getElementById('overlay');
+    const loading = document.getElementById('loading');
+    const config = document.getElementById('config');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const envBadge = document.getElementById('envBadge');
+    const appWrapper = document.getElementById('appWrapper');
+
+    let controlsVisible = true;
+    let isOnline = false;
+    let officeReady = false;
+    let currentUrl = '';
+    let loadTimeoutId = null;
+
+    function detectEnvironment() {
+      try {
+        const platform = Office.context.platform;
+        if (platform === Office.PlatformType.OfficeOnline) {
+          isOnline = true;
+          envBadge.textContent = 'POWERPOINT ONLINE';
+          envBadge.className = 'online';
+        } else {
+          isOnline = false;
+          envBadge.textContent = 'ESCRITORIO';
+          envBadge.className = 'desktop';
+        }
+      } catch (e) {
+        envBadge.textContent = 'STANDALONE';
+        envBadge.className = 'desktop';
+      }
+    }
+
+    function normalizeUrl(url) {
+      url = url.trim();
+      if (!url) return '';
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      return url;
+    }
+
+    function isValidUrl(str) {
+      try { new URL(str); return true; } catch { return false; }
+    }
+
+    function toEmbedUrl(url) {
+      try {
+        var u = new URL(url);
+        var host = u.hostname.replace(/^www\./i, '').toLowerCase();
+        if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+          if (u.pathname.indexOf('/embed/') === 0) return url;
+          var videoId = u.searchParams.get('v');
+          var shortMatch = u.pathname.match(/^\/(?:shorts|live)\/([A-Za-z0-9_-]+)/);
+          if (shortMatch) videoId = shortMatch[1];
+          var listId = u.searchParams.get('list');
+          var startAt = parseInt(u.searchParams.get('t') || u.searchParams.get('start'), 10);
+          if (videoId) {
+            var params = [];
+            if (!isNaN(startAt) && startAt > 0) params.push('start=' + startAt);
+            if (listId) params.push('list=' + listId);
+            return 'https://www.youtube.com/embed/' + videoId + (params.length ? '?' + params.join('&') : '');
+          }
+          if (listId && u.pathname.indexOf('/playlist') === 0) {
+            return 'https://www.youtube.com/embed/videoseries?list=' + listId;
+          }
+          return url;
+        }
+        if (host === 'youtu.be') {
+          var id = u.pathname.split('/').filter(Boolean)[0];
+          if (id) {
+            var t = parseInt(u.searchParams.get('t'), 10);
+            return 'https://www.youtube.com/embed/' + id + (!isNaN(t) && t > 0 ? '?start=' + t : '');
+          }
+          return url;
+        }
+        if (host === 'vimeo.com') {
+          if (u.pathname.indexOf('/video/') !== -1) return url;
+          var segments = u.pathname.split('/').filter(Boolean);
+          for (var i = segments.length - 1; i >= 0; i--) {
+            if (/^\d+$/.test(segments[i])) return 'https://player.vimeo.com/video/' + segments[i];
+          }
+        }
+      } catch (e) {}
+      return url;
+    }
+
+    function showError(title, message, showButtons) {
+      overlay.classList.remove('hidden');
+      let html = '<div class="emoji">⚠️</div>';
+      html += '<h2>' + title + '</h2>';
+      html += '<p>' + message + '</p>';
+      if (showButtons && currentUrl) {
+        html += '<div style="margin-top: 16px;">';
+        html += '<button class="overlay-btn" onclick="openInDialog()">Abrir en Ventana</button>';
+        html += '<button class="overlay-btn secondary" onclick="retryLoad()">Reintentar</button>';
+        html += '</div>';
+        if (isOnline) {
+          html += '<div class="tip"><strong>Tip:</strong> En PowerPoint Online muchos sitios bloquean su incrustación en marcos. Usa <strong>"Abrir en Ventana"</strong> para verlo aparte.</div>';
+        }
+      }
+      overlay.innerHTML = html;
+      loading.classList.remove('active');
+    }
+
+    function showWelcome() {
+      overlay.classList.remove('hidden');
+      let html = '<div class="emoji">🌐</div>';
+      html += '<h2>Visor de Sitios Web</h2>';
+      html += '<p>Escribe una URL arriba y pulsa <strong>Cargar</strong> para mostrarla dentro de esta diapositiva.</p>';
+      html += '<p style="margin-top: 8px; font-size: 13px; color: #999;">💡 Tip: pega un enlace de YouTube o Vimeo para incrustar un video.</p>';
+      if (isOnline) {
+        html += '<div class="tip" style="margin-top: 16px;"><strong>PowerPoint Online detectado:</strong> Algunos sitios no se muestran dentro del marco. Si uno no carga, usa el botón <strong>"Ventana"</strong>.</div>';
+      }
+      overlay.innerHTML = html;
+    }
+
+    function setControlsVisible(visible) {
+      controlsVisible = visible;
+      if (visible) {
+        config.classList.remove('hidden');
+        toggleBtn.classList.remove('visible');
+        envBadge.classList.remove('hidden');
+      } else {
+        config.classList.add('hidden');
+        toggleBtn.classList.add('visible');
+        envBadge.classList.add('hidden');
+      }
+    }
+
+    function toggleControls() { setControlsVisible(!controlsVisible); }
+
+    function reloadFrame() {
+      if (!currentUrl) { showWelcome(); return; }
+      overlay.classList.add('hidden');
+      loading.classList.add('active');
+      webFrame.src = currentUrl;
+      startLoadTimeout();
+    }
+
+    function toggleFullscreen() {
+      var fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsElement) {
+        var exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exitFs) exitFs.call(document);
+        return;
+      }
+      var requestFs = appWrapper.requestFullscreen || appWrapper.webkitRequestFullscreen;
+      if (requestFs) {
+        try {
+          var result = requestFs.call(appWrapper);
+          if (result && typeof result.catch === 'function') {
+            result.catch(function () { setControlsVisible(false); });
+          }
+        } catch (e) { setControlsVisible(false); }
+      } else { setControlsVisible(false); }
+    }
+
+    function onFullscreenChange() {
+      var active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      setControlsVisible(!active);
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+    function openInDialog() {
+      let url = currentUrl || normalizeUrl(urlInput.value);
+      if (!url) { showError('URL vacía', 'Escribe primero una URL.', false); return; }
+      try {
+        if (officeReady && Office.context.ui) {
+          Office.context.ui.displayDialogAsync(url, { width: 80, height: 80, promptBeforeOpen: false },
+            function (result) {
+              if (result.status === Office.AsyncResultStatus.Failed) window.open(url, '_blank');
+            });
+          return;
+        }
+      } catch (e) {}
+      window.open(url, '_blank');
+    }
+
+    function retryLoad() {
+      if (currentUrl) {
+        overlay.classList.add('hidden');
+        loading.classList.add('active');
+        webFrame.src = currentUrl;
+        startLoadTimeout();
+      }
+    }
+
+    function startLoadTimeout() {
+      clearTimeout(loadTimeoutId);
+      loadTimeoutId = setTimeout(function () {
+        if (loading.classList.contains('active')) {
+          showError('El sitio no cargó',
+            'El sitio tarda demasiado o bloquea su incrustación.' + (isOnline ? ' Esto es común en PowerPoint Online.' : ''),
+            true);
+        }
+      }, isOnline ? 12000 : 15000);
+    }
+
+    function saveUrl(url) {
+      try {
+        if (officeReady && Office.context && Office.context.document && Office.context.document.settings) {
+          Office.context.document.settings.set('webViewerUrl', url);
+          Office.context.document.settings.saveAsync();
+        }
+      } catch (e) {}
+    }
+
+    function loadUrl() {
+      let typedUrl = normalizeUrl(urlInput.value);
+      if (!typedUrl) { showError('URL vacía', 'Escribe una URL para cargar.', false); return; }
+      if (!isValidUrl(typedUrl)) { showError('URL inválida', 'La URL no es válida. Revísala e intenta de nuevo.', false); return; }
+      urlInput.value = typedUrl;
+      currentUrl = toEmbedUrl(typedUrl);
+      overlay.classList.add('hidden');
+      loading.classList.add('active');
+      webFrame.src = currentUrl;
+      startLoadTimeout();
+      saveUrl(typedUrl);
+    }
+
+    webFrame.addEventListener('load', function () {
+      clearTimeout(loadTimeoutId);
+      loading.classList.remove('active');
+      if (webFrame.src && webFrame.src !== 'about:blank' && webFrame.src !== '') {
+        try {
+          var doc = webFrame.contentDocument;
+          if (doc && doc.body) {
+            var bodyContent = doc.body.innerHTML;
+            if (!bodyContent || bodyContent.trim() === '') {
+              showError('El sitio aparece en blanco', 'El sitio cargó pero no muestra contenido. Puede estar bloqueando la incrustación.', true);
+              return;
+            }
+          }
+        } catch (e) {}
+        overlay.classList.add('hidden');
+      }
+    });
+
+    webFrame.addEventListener('error', function () {
+      clearTimeout(loadTimeoutId);
+      loading.classList.remove('active');
+      showError('No se pudo cargar el sitio', 'Este sitio puede bloquear su incrustación, o hay un problema de conexión.', true);
+    });
+
+    urlInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') loadUrl();
+    });
+
+    Office.onReady(function () {
+      officeReady = true;
+      detectEnvironment();
+      if (!currentUrl) showWelcome();
+      try {
+        if (Office.context && Office.context.document && Office.context.document.settings) {
+          var savedUrl = Office.context.document.settings.get('webViewerUrl');
+          if (savedUrl) {
+            urlInput.value = savedUrl;
+            currentUrl = toEmbedUrl(savedUrl);
+            overlay.classList.add('hidden');
+            loading.classList.add('active');
+            webFrame.src = currentUrl;
+            startLoadTimeout();
+          }
+        }
+      } catch (e) {}
+    });
+  </script>
+</body>
+</html>
